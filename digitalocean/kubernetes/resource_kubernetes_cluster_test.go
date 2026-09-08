@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/digitalocean/godo"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
 	"github.com/digitalocean/terraform-provider-digitalocean/digitalocean/acceptance"
 	"github.com/digitalocean/terraform-provider-digitalocean/digitalocean/config"
 	"github.com/digitalocean/terraform-provider-digitalocean/digitalocean/kubernetes"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 const (
@@ -98,10 +100,13 @@ func TestAccDigitalOceanKubernetesCluster_Basic(t *testing.T) {
 					resource.TestCheckResourceAttrSet("digitalocean_kubernetes_cluster.foobar", "cluster_autoscaler_configuration.0.scale_down_utilization_threshold"),
 					resource.TestCheckResourceAttrSet("digitalocean_kubernetes_cluster.foobar", "cluster_autoscaler_configuration.0.scale_down_unneeded_time"),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "routing_agent.0.enabled", "false"),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "p2p_oci_registry_plugin.0.enabled", "false"),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "amd_gpu_device_plugin.0.enabled", "false"),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "amd_gpu_device_metrics_exporter_plugin.0.enabled", "false"),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "coredns_autoscaler.0.enabled", "false"),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "nvidia_gpu_device_plugin.0.enabled", "false"),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "nvidia_gpu_dra_driver.0.enabled", "false"),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "amd_gpu_dra_driver.0.enabled", "false"),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "rdma_shared_device_plugin.0.enabled", "false"),
 				),
 			},
@@ -999,6 +1004,26 @@ func TestAccDigitalOceanKubernetesCluster_RoutingAgentEnabled(t *testing.T) {
 	})
 }
 
+func TestAccDigitalOceanKubernetesCluster_P2pOciRegistryPluginEnabled(t *testing.T) {
+	rName := acceptance.RandomTestName()
+	var k8s godo.KubernetesCluster
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDigitalOceanKubernetesConfigP2pOciRegistryPluginEnabled(testClusterVersionPrevious, rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckDigitalOceanKubernetesClusterExists("digitalocean_kubernetes_cluster.foobar", &k8s),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "p2p_oci_registry_plugin.0.enabled", "true"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDigitalOceanKubernetesCluster_CorednsAutoscalerEnabled(t *testing.T) {
 	rName := acceptance.RandomTestName()
 	var k8s godo.KubernetesCluster
@@ -1079,6 +1104,105 @@ func TestAccDigitalOceanKubernetesCluster_NvidiaGpuDevicePluginEnabled(t *testin
 	})
 }
 
+func TestAccDigitalOceanKubernetesCluster_NvidiaGpuDraDriverEnabled(t *testing.T) {
+	rName := acceptance.RandomTestName()
+	var k8s godo.KubernetesCluster
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDigitalOceanKubernetesConfigNvidiaGpuDraDriverEnabled(testClusterVersionPrevious, rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckDigitalOceanKubernetesClusterExists("digitalocean_kubernetes_cluster.foobar", &k8s),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "nvidia_gpu_dra_driver.0.enabled", "true"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanKubernetesCluster_AmdGpuDraDriverEnabled(t *testing.T) {
+	rName := acceptance.RandomTestName()
+	var k8s godo.KubernetesCluster
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDigitalOceanKubernetesConfigAmdGpuDraDriverEnabled(testClusterVersionPrevious, rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckDigitalOceanKubernetesClusterExists("digitalocean_kubernetes_cluster.foobar", &k8s),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "amd_gpu_dra_driver.0.enabled", "true"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanKubernetesCluster_NvidiaGpuDraConflictsWithDevicePlugin(t *testing.T) {
+	rName := acceptance.RandomTestName()
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccDigitalOceanKubernetesConfigNvidiaGpuDraConflictsWithDevicePlugin(testClusterVersionPrevious, rName),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`"nvidia_gpu_dra_driver": conflicts with nvidia_gpu_device_plugin`),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanKubernetesCluster_AmdGpuDraConflictsWithDevicePlugin(t *testing.T) {
+	rName := acceptance.RandomTestName()
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccDigitalOceanKubernetesConfigAmdGpuDraConflictsWithDevicePlugin(testClusterVersionPrevious, rName),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`"amd_gpu_dra_driver": conflicts with amd_gpu_device_plugin`),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanKubernetesCluster_GpuPartitionMode(t *testing.T) {
+	amdGPUSize := os.Getenv("DO_AMD_GPU_SIZE")
+	if amdGPUSize == "" {
+		t.Skip("DO_AMD_GPU_SIZE must be set to an AMD GPU–capable Droplet size for gpu_partition_mode acceptance tests")
+	}
+
+	rName := acceptance.RandomTestName()
+	var k8s godo.KubernetesCluster
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDigitalOceanKubernetesConfigGpuPartitionMode(testClusterVersionPrevious, rName, amdGPUSize),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckDigitalOceanKubernetesClusterExists("digitalocean_kubernetes_cluster.foobar", &k8s),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "node_pool.0.gpu_partition_mode", godo.KubernetesAMDPartitionModeSPXNPS1),
+				),
+			},
+		},
+	})
+}
+
 func TestAccDigitalOceanKubernetesCluster_RdmaSharedDevicePluginEnabled(t *testing.T) {
 	rName := acceptance.RandomTestName()
 	var k8s godo.KubernetesCluster
@@ -1093,6 +1217,26 @@ func TestAccDigitalOceanKubernetesCluster_RdmaSharedDevicePluginEnabled(t *testi
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckDigitalOceanKubernetesClusterExists("digitalocean_kubernetes_cluster.foobar", &k8s),
 					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "rdma_shared_device_plugin.0.enabled", "true"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDigitalOceanKubernetesCluster_IsolatedWorkersEnabled(t *testing.T) {
+	rName := acceptance.RandomTestName()
+	var k8s godo.KubernetesCluster
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      testAccCheckDigitalOceanKubernetesClusterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDigitalOceanKubernetesConfigIsolatedWorkersEnabled(testClusterVersionLatest, rName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckDigitalOceanKubernetesClusterExists("digitalocean_kubernetes_cluster.foobar", &k8s),
+					resource.TestCheckResourceAttr("digitalocean_kubernetes_cluster.foobar", "isolated_workers", "true"),
 				),
 			},
 		},
@@ -1425,6 +1569,26 @@ resource "digitalocean_kubernetes_cluster" "foobar" {
 `, testClusterVersion, rName)
 }
 
+func testAccDigitalOceanKubernetesConfigP2pOciRegistryPluginEnabled(testClusterVersion string, rName string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name    = "%s"
+  region  = "nyc1"
+  version = data.digitalocean_kubernetes_versions.test.latest_version
+  ha      = false
+  p2p_oci_registry_plugin {
+    enabled = true
+  }
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    node_count = 1
+  }
+}
+`, testClusterVersion, rName)
+}
+
 func testAccDigitalOceanKubernetesConfigCorednsAutoscalerEnabled(testClusterVersion string, rName string) string {
 	return fmt.Sprintf(`%s
 
@@ -1505,6 +1669,110 @@ resource "digitalocean_kubernetes_cluster" "foobar" {
 `, testClusterVersion, rName)
 }
 
+func testAccDigitalOceanKubernetesConfigNvidiaGpuDraDriverEnabled(testClusterVersion string, rName string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name    = "%s"
+  region  = "nyc1"
+  version = data.digitalocean_kubernetes_versions.test.latest_version
+  ha      = false
+  nvidia_gpu_dra_driver {
+    enabled = true
+  }
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    node_count = 1
+  }
+}
+`, testClusterVersion, rName)
+}
+
+func testAccDigitalOceanKubernetesConfigAmdGpuDraDriverEnabled(testClusterVersion string, rName string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name    = "%s"
+  region  = "nyc1"
+  version = data.digitalocean_kubernetes_versions.test.latest_version
+  ha      = false
+  amd_gpu_dra_driver {
+    enabled = true
+  }
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    node_count = 1
+  }
+}
+`, testClusterVersion, rName)
+}
+
+func testAccDigitalOceanKubernetesConfigNvidiaGpuDraConflictsWithDevicePlugin(testClusterVersion string, rName string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name    = "%s"
+  region  = "nyc1"
+  version = data.digitalocean_kubernetes_versions.test.latest_version
+  ha      = false
+  nvidia_gpu_device_plugin {
+    enabled = true
+  }
+  nvidia_gpu_dra_driver {
+    enabled = true
+  }
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    node_count = 1
+  }
+}
+`, testClusterVersion, rName)
+}
+
+func testAccDigitalOceanKubernetesConfigAmdGpuDraConflictsWithDevicePlugin(testClusterVersion string, rName string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name    = "%s"
+  region  = "nyc1"
+  version = data.digitalocean_kubernetes_versions.test.latest_version
+  ha      = false
+  amd_gpu_device_plugin {
+    enabled = true
+  }
+  amd_gpu_dra_driver {
+    enabled = true
+  }
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    node_count = 1
+  }
+}
+`, testClusterVersion, rName)
+}
+
+func testAccDigitalOceanKubernetesConfigGpuPartitionMode(testClusterVersion string, rName string, size string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name    = "%s"
+  region  = "nyc1"
+  version = data.digitalocean_kubernetes_versions.test.latest_version
+  ha      = false
+  node_pool {
+    name               = "default"
+    size               = "%s"
+    node_count         = 1
+    gpu_partition_mode = "%s"
+  }
+}
+`, testClusterVersion, rName, size, godo.KubernetesAMDPartitionModeSPXNPS1)
+}
+
 func testAccDigitalOceanKubernetesConfigRdmaSharedDevicePluginEnabled(testClusterVersion string, rName string) string {
 	return fmt.Sprintf(`%s
 
@@ -1516,6 +1784,25 @@ resource "digitalocean_kubernetes_cluster" "foobar" {
   rdma_shared_device_plugin {
     enabled = true
   }
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    node_count = 1
+  }
+}
+`, testClusterVersion, rName)
+}
+
+func testAccDigitalOceanKubernetesConfigIsolatedWorkersEnabled(testClusterVersion string, rName string) string {
+	return fmt.Sprintf(`%s
+
+resource "digitalocean_kubernetes_cluster" "foobar" {
+  name             = "%s"
+  region           = "nyc1"
+  version          = data.digitalocean_kubernetes_versions.test.latest_version
+  ha               = false
+  isolated_workers = true
+
   node_pool {
     name       = "default"
     size       = "s-1vcpu-2gb"
