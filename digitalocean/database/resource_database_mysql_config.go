@@ -360,7 +360,7 @@ func resourceDigitalOceanDatabaseMySQLConfigRead(ctx context.Context, d *schema.
 	d.Set("max_heap_table_size", config.MaxHeapTableSize)
 	d.Set("tmp_table_size", config.TmpTableSize)
 	d.Set("slow_query_log", config.SlowQueryLog)
-	d.Set("long_query_time", config.LongQueryTime)
+	util.SetFloat32Attribute(d, "long_query_time", config.LongQueryTime)
 	d.Set("backup_hour", config.BackupHour)
 	d.Set("backup_minute", config.BackupMinute)
 	d.Set("binlog_retention_period", config.BinlogRetentionPeriod)
