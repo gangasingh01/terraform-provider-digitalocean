@@ -49,3 +49,57 @@ func TestCaseSensitive(t *testing.T) {
 		})
 	}
 }
+
+func TestFloat32Precision(t *testing.T) {
+	cases := []struct {
+		Name     string
+		Left     string
+		Right    string
+		Suppress bool
+	}{
+		{
+			Name:     "exact match",
+			Left:     "0.001",
+			Right:    "0.001",
+			Suppress: true,
+		},
+		{
+			Name:     "float32 expansion of 0.001",
+			Left:     "0.0010000000474974513",
+			Right:    "0.001",
+			Suppress: true,
+		},
+		{
+			Name:     "zero is distinct from small values",
+			Left:     "0",
+			Right:    "0.001",
+			Suppress: false,
+		},
+		{
+			Name:     "materially different values",
+			Left:     "0.1",
+			Right:    "0.01",
+			Suppress: false,
+		},
+		{
+			Name:     "zero equals zero",
+			Left:     "0",
+			Right:    "0",
+			Suppress: true,
+		},
+		{
+			Name:     "invalid values are not suppressed",
+			Left:     "not-a-number",
+			Right:    "0.001",
+			Suppress: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			if Float32Precision("test", tc.Left, tc.Right, nil) != tc.Suppress {
+				t.Fatalf("Expected Float32Precision to return %t for '%q' == '%q'", tc.Suppress, tc.Left, tc.Right)
+			}
+		})
+	}
+}
